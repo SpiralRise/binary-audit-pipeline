@@ -29,7 +29,7 @@ pipeline that tells you where to look first.
 | 4 | Ghidra | Decompile only files hit by capa/CWE (`GHIDRA_SCOPE=hits`) | on |
 | 5 | Semgrep | Scan decompiled pseudocode with local rules | on |
 | 6 | Joern | Source-to-sink taint flows with file, function, line and code | on |
-| 7 | script scan | Check shell/Python scripts for dangerous calls | on |
+| 7 | Semgrep + Bandit + njsscan | Check shell/Python/JS scripts for dangerous calls | on |
 | 8 | summarize | Build `高风险点清单.md` (prioritized report) | on |
 
 Key behaviours:
@@ -70,6 +70,24 @@ docker run --rm --entrypoint sh \
   /opt/pipeline/scripts/pipeline.sh /work/targets /work/out
 ```
 
+### Build from source
+
+```bash
+git clone https://github.com/SpiralRise/binary-audit-pipeline.git
+cd binary-audit-pipeline
+docker build -t binary-audit-pipeline:1.1.0 .
+python3 audit.py /path/to/firmware /path/to/out
+```
+
+The build downloads JDK 25, Ghidra, Joern, capa rules and the Semgrep rule packs.
+If GitHub is slow on your network, point the build at a proxy or a mirror:
+
+```bash
+docker build -t binary-audit-pipeline:1.1.0 \
+  --build-arg GITHUB_PROXY=https://gh-proxy.com/ \
+  --build-arg PIP_INDEX=https://mirrors.cloud.tencent.com/pypi/simple/ .
+```
+
 ### Offline
 
 ```bash
@@ -77,6 +95,16 @@ zstd -d binary-audit-pipeline.tar.zst -c | docker load
 tar xzf binary-audit-pipeline-tools.tar.gz
 python3 audit.py /path/to/samples /path/to/out
 ```
+
+The offline bundle is not stored in this repository because of its size; create
+one with `docker save binary-audit-pipeline:1.1.0 | zstd -T0 -10 -o binary-audit-pipeline.tar.zst`.
+
+## Requirements
+
+- Docker Engine 20.10+ (or Docker Desktop).
+- About 10 GB of free disk for the image and the output directory.
+- 8 GB RAM recommended; Ghidra and Joern are memory-hungry.
+- Joern is the slowest step; expect longer runtimes on large binaries.
 
 ## Output
 
@@ -86,6 +114,7 @@ The main report is `out/高风险点清单.md`. It contains, among other section
 - CWE findings with the CWE676 hint separated;
 - decompiled function inventory;
 - Semgrep findings;
+- script-scan findings (Semgrep, Bandit, njsscan);
 - Joern taint flows grouped by source file;
 - a dangerous-sink table.
 
@@ -139,12 +168,18 @@ can give to an AI together with the whole `out/` directory. It asks the model to
 ## Repository layout
 
 ```text
+audit.py            host-side wrapper around docker run
+Dockerfile          image build definition
 scripts/            pipeline and helper scripts
 ghidra_scripts/     Ghidra headless export script
 rules/local/        Semgrep rules for decompiled code
+cwe_pcode/          patched cwe_checker p-code extractor (Ghidra 12.x)
 samples/            small demo binary source
 prompts/            AI handoff prompts
+examples/           case studies (e.g. Heartbleed)
 docs/               screenshots and diagrams
+LICENSE
+THIRD_PARTY_LICENSES.md
 ```
 
 ## License
