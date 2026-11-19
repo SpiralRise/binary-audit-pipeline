@@ -61,24 +61,6 @@ docker run --rm --entrypoint sh \
   /opt/pipeline/scripts/pipeline.sh /work/targets /work/out
 ```
 
-### 从源码构建
-
-```bash
-git clone https://github.com/SpiralRise/binary-audit-pipeline.git
-cd binary-audit-pipeline
-docker build -t binary-audit-pipeline:1.1.0 .
-python3 audit.py /path/to/firmware /path/to/out
-```
-
-构建过程会下载 JDK 25、Ghidra、Joern、capa 规则和 Semgrep 规则包。
-如果 GitHub 慢，可以指定代理或镜像：
-
-```bash
-docker build -t binary-audit-pipeline:1.1.0 \
-  --build-arg GITHUB_PROXY=https://gh-proxy.com/ \
-  --build-arg PIP_INDEX=https://mirrors.cloud.tencent.com/pypi/simple/ .
-```
-
 ### 离线
 
 ```bash
@@ -157,7 +139,6 @@ flowchart LR
 
 ```text
 audit.py            宿主机一键封装脚本
-Dockerfile          镜像构建文件
 scripts/            流水线与辅助脚本
 ghidra_scripts/     Ghidra headless 导出脚本
 rules/local/        针对伪代码的 Semgrep 规则
