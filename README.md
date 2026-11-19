@@ -6,7 +6,9 @@
 > vulnerability report: capabilities, CWE defects, decompiled code,
 > taint flows, and next-step fuzz targets.
 
-<!-- TODO: add docs/demo.gif and replace this comment with the image link. -->
+<p align="center">
+  <img src="docs/demo.gif" alt="Running the pipeline on a stripped OpenSSL 1.0.1c binary" width="800">
+</p>
 
 ## Why this exists
 
@@ -43,6 +45,32 @@ Key behaviours:
   are filtered out.
 - The report includes a dedicated dangerous-sink table, so `memcpy`, `strcpy`,
   `system` and similar calls are easy to locate.
+
+## How the steps connect
+
+The eight steps are a funnel, not a checklist. Each one narrows the scope for
+the next:
+
+1. **CVE lookup** (optional) matches library versions against known CVEs.
+2. **capa and cwe_checker** scan every file in the target directory. capa
+   reports capabilities (network I/O, file handling, encoding/decoding,
+   crypto); cwe_checker reports memory-safety and other CWE defects.
+3. The files flagged by either tool are **deduplicated** and become the
+   **Ghidra scope**. Everything else is skipped, so a few thousand functions
+   collapse into a few hundred. If nothing is flagged, Ghidra falls back to
+   all files.
+4. **Semgrep** runs over the decompiled pseudocode and keeps dangerous
+   patterns; only its hits become the **Joern scope**.
+5. **Joern** re-checks those candidates and confirms whether untrusted input
+   actually reaches a sink, with file, function and line.
+6. In parallel, **Semgrep + Bandit + njsscan** scan the shell, Python and
+   JavaScript files found in the target directory.
+7. The **summarizer** merges everything into `高风险点清单.md`.
+
+Every step writes its raw output to its own numbered directory (`01_cve`,
+`02_capa`, ...). That is what makes a run resumable, allows a single step to be
+re-run with `--only`, and lets you hand the whole `out/` directory to an AI or a
+colleague for the next round of analysis.
 
 ## Quick start
 
@@ -85,8 +113,18 @@ one with `docker save binary-audit-pipeline:1.1.0 | zstd -T0 -10 -o binary-audit
 
 - Docker Engine 20.10+ (or Docker Desktop).
 - About 10 GB of free disk for the image and the output directory.
-- 8 GB RAM recommended; Ghidra and Joern are memory-hungry.
-- Joern is the slowest step; expect longer runtimes on large binaries.
+- 4 CPU cores are enough for medium-sized binaries.
+- 8 GB RAM minimum, 16 GB recommended; Ghidra and Joern are memory-hungry.
+
+## Performance
+
+Measured on a 4-core / 16 GB virtual machine: a stripped `libssl.so.1.0.0` from
+Ubuntu 12.04 (OpenSSL 1.0.1c, about 8,700 functions) takes roughly **25 minutes**
+end to end with Joern enabled. Ghidra decompilation and Joern taint analysis
+dominate the runtime; the other steps take a couple of minutes in total.
+
+Because each step caches its output, an interrupted run resumes where it
+stopped, and `--only 8` re-runs just the summarizer.
 
 ## Output
 
@@ -102,6 +140,8 @@ The main report is `out/高风险点清单.md`. It contains, among other section
 
 Raw tool output is kept under `out/01_cve`, `out/02_capa`, and so on, so you can
 inspect the original JSON at any time.
+
+![Dangerous sink table](docs/sink-table.png)
 
 ## Architecture
 
@@ -139,6 +179,14 @@ can give to an AI together with the whole `out/` directory. It asks the model to
 The same instructions are packaged as an agent skill in
 [`skills/binary-audit-triage/SKILL.md`](skills/binary-audit-triage/SKILL.md),
 for runtimes that load skills automatically.
+
+## Case study
+
+[`examples/heartbleed/`](examples/heartbleed/) runs the pipeline on a stripped
+OpenSSL 1.0.1c binary (the Heartbleed version). 88 files in, 10 decompiled
+files and 8,735 functions, 33 taint flows, 81 dangerous sinks. The page
+includes terminal screenshots and explains what the result does and does not
+prove.
 
 ## Limitations
 
