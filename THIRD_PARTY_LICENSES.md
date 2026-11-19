@@ -11,6 +11,8 @@ source offers for LGPL components.
 | Joern | Apache-2.0 | https://github.com/joernio/joern |
 | capa | Apache-2.0 | https://github.com/mandiant/capa |
 | Semgrep | LGPL-2.1 | https://github.com/semgrep/semgrep |
+| Bandit | Apache-2.0 | https://github.com/PyCQA/bandit |
+| njsscan | LGPL-3.0 | https://github.com/ajinabraham/njsscan |
 | cwe_checker | LGPL-3.0 | https://github.com/fkie-cad/cwe_checker |
 | cve-bin-tool | LGPL-3.0 | https://github.com/intel/cve-bin-tool |
 | Ubuntu base image | Various | https://ubuntu.com/legal |
