@@ -136,6 +136,10 @@ can give to an AI together with the whole `out/` directory. It asks the model to
 4. suggest a harness (AFL++ / libFuzzer) and the input format;
 5. list files that were not covered by the pipeline.
 
+The same instructions are packaged as an agent skill in
+[`skills/binary-audit-triage/SKILL.md`](skills/binary-audit-triage/SKILL.md),
+for runtimes that load skills automatically.
+
 ## Limitations
 
 - Static analysis only; findings need manual confirmation.
@@ -157,6 +161,7 @@ rules/local/        Semgrep rules for decompiled code
 cwe_pcode/          patched cwe_checker p-code extractor (Ghidra 12.x)
 samples/            small demo binary source
 prompts/            AI handoff prompts
+skills/             agent skills (auto-loaded by skill-aware runtimes)
 examples/           case studies (e.g. Heartbleed)
 docs/               screenshots and diagrams
 LICENSE
