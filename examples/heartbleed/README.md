@@ -30,45 +30,53 @@ python3 audit.py /path/to/openssl-1.0.1c/extracted /path/to/out
 
 默认关闭 CVE 扫描（第 1 步），开启 Joern（第 6 步）。
 
+实测环境是 4 核 / 16GB 内存的虚拟机，完整 8 步耗时 **24 分 23 秒**。
+
+![运行开始](../../docs/run-start.png)
+
 ## 跑出来的结果
+
+目标目录共 88 个文件，每一步都在收敛范围：
 
 | 步骤 | 结果 |
 | --- | --- |
-| 1. 组件 CVE（cve-bin-tool，默认关闭） | 0（本次未开启，数据库也未初始化） |
-| 2. 能力特征（capa） | 81 条，命中 10 个文件 |
-| 3. CWE 缺陷（cwe_checker） | 162 条 |
-| 4. 反编译产物（Ghidra） | 8735 个函数 |
-| 5. 伪代码规则（Semgrep） | 195 条 |
-| 6. 污点路径（Joern） | 25 条；sink 命中 960 条，其中危险调用 6 条 |
-| 7. 脚本扫描（Semgrep/Bandit/njsscan） | 0（样本里没有脚本，自动跳过） |
+| 1. 组件 CVE（cve-bin-tool，默认关闭） | 跳过 |
+| 2. 能力特征（capa） | 81 条命中，涉及 10 个文件 |
+| 3. CWE 缺陷（cwe_checker） | 163 条；15 个 ELF 里 4 个有缺陷、3 个仅 CWE676 提示、8 个无发现 |
+| 4. 反编译（Ghidra） | 命中文件去重后 10 个 → 8735 个函数 |
+| 5. 伪代码规则（Semgrep） | 682 条命中 |
+| 6. 污点路径（Joern） | 33 条可达路径（6 个文件进入复筛） |
+| 7. 脚本扫描（Semgrep / Bandit / njsscan） | 跳过（样本里没有脚本） |
+| 8. 汇总 | 81 条危险 sink |
 
-capa 命中数最多的三个文件：
+![运行结束](../../docs/run-finish.png)
 
-| 文件 | 规则 | 函数 |
-| --- | --- | --- |
-| `libcrypto.so.1.0.0` | 39 | 1077 |
-| `usr/bin/openssl` | 24 | 104 |
-| `libssl.so.1.0.0` | 6 | 106 |
+## 6.2 危险 sink 表：Heartbleed 同形态的那一条
 
-## 6.2 危险 sink 表（节选）
+```bash
+grep -n -A6 "危险 sink" out/高风险点清单.md
+grep -n "pAVar1->length" out/高风险点清单.md
+```
 
-| 位置 | 函数 | 调用 |
-| --- | --- | --- |
-| openssl.c:19359 | `FUN_00424d40` | `memcpy(local_60, pAVar1->data, (long)pAVar1->length)` |
-| openssl.c:20649 | `password_callback` | `memcpy(param_1, pcVar6, (long)(int)len)` |
-| openssl.c:24059 | `generate_cookie_callback` | `memcpy(param_2, local_78, (ulong)local_9c)` |
-| libgost.so.c:5091 | `FUN_0010cd40` | `memcpy((void *)((long)param_1 + (long)iVar3 + 0x54), param_2, __n)` |
+81 条里第 79 条就是：
 
-第一条值得注意：拷贝长度 `pAVar1->length` 直接来自结构体字段，
-和 Heartbleed 的形态（长度字段来自报文、未经校验就传给 `memcpy`）一致。
+```
+| 79 | openssl.c:19359 | FUN_00424d40 | `memcpy(local_60,pAVar1->data,(long)pAVar1->length)` |
+```
+
+![sink 定位](../../docs/sink-table.png)
+
+拷贝长度 `pAVar1->length` 直接来自结构体字段，和 Heartbleed 的形态
+（长度字段来自报文、未经校验就传给 `memcpy`）一致。
 
 ## 这个案例能说明什么，不能说明什么
 
 能说明：
 
-- 对 stripped 的二进制，流水线能自动定位到"长度字段直接进 `memcpy`"这类调用点，
-  把 8735 个反编译函数压缩成 6 条值得人工看的危险调用；
-- 不需要源码、不需要运行样本。
+- 对 stripped 的二进制，流水线能把 88 个文件收敛成 10 个反编译文件、8735 个函数，
+  再收敛到 33 条污点路径和 81 条危险调用，其中第 79 条与 Heartbleed 同形态；
+- 不需要源码、不需要运行样本；
+- 4 核 / 16GB 上，整个目录 24 分钟跑完，每一步的原始结果都留在 `out/` 里。
 
 不能说明：
 
@@ -76,6 +84,6 @@ capa 命中数最多的三个文件：
   静态扫描只能给出行为线索，不能证明它就是 `tls1_process_heartbeat`；
 - CVE 编号要靠第 1 步的 cve-bin-tool，本次是关闭状态，而且它按版本匹配，
   对 Ubuntu 打了补丁的包容易误报或漏报；
-- 结论仍然需要人工顺着这条 `memcpy` 往上回溯，确认长度字段是否来自网络报文。
+- 结论仍然需要人工顺着这条 `memcpy` 往上回溯，确认长度字段是否真的来自网络报文。
 
-这也是这个项目的定位：它不是漏洞发现器，是把"该先看哪里"从几千个函数缩短到几条线索。
+这也是这个项目的定位：它不是漏洞发现器，是把"该先看哪里"从 88 个文件缩短到一条调用。
