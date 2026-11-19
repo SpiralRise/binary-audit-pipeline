@@ -1,0 +1,118 @@
+# 针对 Ghidra 反编译伪代码（C 语法）的 Semgrep 规则集
+# 目标：在无源码场景下，从伪代码里筛出"值得人工确认"的高风险调用点
+# 说明：这些规则只做线索筛选，命中不等于漏洞，需要人工或 AI 复查数据流
+rules:
+  # 1. 无边界字符串拷贝：栈溢出 / 缓冲区溢出的经典来源
+  - id: dec-unsafe-string-copy
+    languages: [c]
+    severity: WARNING
+    message: >-
+      发现无边界字符串拷贝或输入（strcpy/strcat/gets/sprintf/vsprintf）。
+      若目标缓冲区是栈上变量、源数据来自网络或文件输入，即为栈溢出
+      （CWE-120 / CWE-787）。请确认 $DST 的大小与 $SRC 的来源。
+    patterns:
+      - pattern-either:
+          - pattern: strcpy($DST, $SRC)
+          - pattern: strcat($DST, $SRC)
+          - pattern: gets($DST)
+          - pattern: sprintf($DST, $FMT, ...)
+          - pattern: vsprintf($DST, $FMT, ...)
+      - pattern-not: strcpy($DST, "...")
+      - pattern-not: strcat($DST, "...")
+    metadata:
+      cwe: ["CWE-120", "CWE-787"]
+      confidence: MEDIUM
+
+  # 2. 由变量控制长度的内存拷贝：长度未做边界校验时会越界写
+  - id: dec-unbounded-memcpy
+    languages: [c]
+    severity: WARNING
+    message: >-
+      memcpy/memmove/strncpy 的长度参数 $LEN 不是编译期常量，
+      若 $LEN 由外部输入决定且未与目标缓冲区容量比较，会造成越界写（CWE-787）。
+    patterns:
+      - pattern-either:
+          - pattern: memcpy($DST, $SRC, $LEN)
+          - pattern: memmove($DST, $SRC, $LEN)
+          - pattern: strncpy($DST, $SRC, $LEN)
+      - metavariable-regex:
+          metavariable: $LEN
+          regex: '^[A-Za-z_(]'
+    metadata:
+      cwe: ["CWE-787", "CWE-120"]
+      confidence: LOW
+
+  # 3. 命令执行：外部输入直接进入 shell 即为命令注入
+  - id: dec-command-exec
+    languages: [c]
+    severity: ERROR
+    message: >-
+      发现命令执行调用（system/popen/exec*）。请回溯参数是否来自外部输入，
+      若是则为命令注入（CWE-78），可直接构成 RCE。
+    patterns:
+      - pattern-either:
+          - pattern: system($CMD)
+          - pattern: popen($CMD, $MODE)
+          - pattern: execl($P, ...)
+          - pattern: execlp($P, ...)
+          - pattern: execv($P, $ARGV)
+          - pattern: execvp($P, $ARGV)
+    metadata:
+      cwe: ["CWE-78"]
+      confidence: MEDIUM
+
+  # 4. 格式化字符串：格式串来自变量而非字面量
+  - id: dec-format-string
+    languages: [c]
+    severity: WARNING
+    message: >-
+      printf/ fprintf/ syslog 的格式串 $FMT 来自变量，若该变量受外部控制，
+      可造成格式化字符串漏洞（CWE-134），可用于读写任意内存。
+    patterns:
+      - pattern-either:
+          - pattern: printf($FMT)
+          - pattern: vprintf($FMT, $VA)
+          - pattern: fprintf($FP, $FMT)
+          - pattern: syslog($PRI, $FMT)
+      - metavariable-regex:
+          metavariable: $FMT
+          regex: '^[A-Za-z_]'
+    metadata:
+      cwe: ["CWE-134"]
+      confidence: LOW
+
+  # 5. 疑似硬编码口令 / 密钥：赏金与合规场景都常被判定为有效问题
+  - id: dec-hardcoded-secret
+    languages: [c]
+    severity: INFO
+    message: >-
+      变量名含 pass/pwd/key/secret/token/cred 且被赋值为字符串常量，
+      疑似硬编码凭据（CWE-798）。
+    patterns:
+      - pattern: $VAR = "..."
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: '.*(pass|pwd|key|secret|token|cred|Pass|Pwd|Key|Secret|Token|Cred).*'
+    metadata:
+      cwe: ["CWE-798"]
+      confidence: LOW
+
+  # 6. 无长度限制的输入函数：攻击面线索，用来定位"数据入口"
+  - id: dec-untrusted-input-source
+    languages: [c]
+    severity: INFO
+    message: >-
+      发现外部输入读取点（recv/read/fread/fgets/scanf/getenv），
+      这是污点分析的 source 点，可用来判断哪些函数直接接触外部数据。
+    patterns:
+      - pattern-either:
+          - pattern: recv($S, $B, $L, $F)
+          - pattern: recvfrom($S, $B, $L, $F, $A, $AL)
+          - pattern: read($FD, $B, $L)
+          - pattern: fread($B, $S, $N, $FP)
+          - pattern: fgets($B, $L, $FP)
+          - pattern: scanf($FMT, ...)
+          - pattern: getenv($NAME)
+    metadata:
+      cwe: ["CWE-20"]
+      confidence: LOW
