@@ -1,0 +1,14 @@
+out/
+out_*/
+cvedb/
+jdk25/
+ghidra.deb
+dockerbin/
+capa-rules/
+cwe_pcode/
+*.tar
+*.tar.zst
+logs/
+__pycache__/
+*.pyc
+.venv/
