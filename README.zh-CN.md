@@ -126,6 +126,10 @@ flowchart LR
 4. 建议 harness（AFL++ / libFuzzer）和输入格式；
 5. 列出没有被覆盖的文件。
 
+同样的内容也打包成了 agent skill：
+[`skills/binary-audit-triage/SKILL.md`](skills/binary-audit-triage/SKILL.md)，
+支持 skill 的运行时会自动加载。
+
 ## 限制
 
 - 只做静态分析，发现需要人工确认；
@@ -145,6 +149,7 @@ rules/local/        针对伪代码的 Semgrep 规则
 cwe_pcode/          打过补丁的 cwe_checker p-code 提取器（适配 Ghidra 12.x）
 samples/            小型演示样本源码
 prompts/            AI 交接提示词
+skills/             agent skill（支持 skill 的运行时会自动加载）
 examples/           案例（如 Heartbleed）
 docs/               截图与架构图
 LICENSE
