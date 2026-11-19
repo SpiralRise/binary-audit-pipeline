@@ -25,7 +25,7 @@
 | 4 | Ghidra | 只反编译 capa/CWE 命中的文件（`GHIDRA_SCOPE=hits`） | 开 |
 | 5 | Semgrep | 用本地规则扫描伪代码 | 开 |
 | 6 | Joern | source-to-sink 污点路径，带文件、函数、行号、代码 | 开 |
-| 7 | 脚本扫描 | 检查 shell/Python 脚本中的危险调用 | 开 |
+| 7 | Semgrep + Bandit + njsscan | 检查 shell/Python/JS 脚本中的危险调用 | 开 |
 | 8 | 汇总 | 生成 `高风险点清单.md` | 开 |
 
 几个关键行为：
@@ -61,6 +61,24 @@ docker run --rm --entrypoint sh \
   /opt/pipeline/scripts/pipeline.sh /work/targets /work/out
 ```
 
+### 从源码构建
+
+```bash
+git clone https://github.com/SpiralRise/binary-audit-pipeline.git
+cd binary-audit-pipeline
+docker build -t binary-audit-pipeline:1.1.0 .
+python3 audit.py /path/to/firmware /path/to/out
+```
+
+构建过程会下载 JDK 25、Ghidra、Joern、capa 规则和 Semgrep 规则包。
+如果 GitHub 慢，可以指定代理或镜像：
+
+```bash
+docker build -t binary-audit-pipeline:1.1.0 \
+  --build-arg GITHUB_PROXY=https://gh-proxy.com/ \
+  --build-arg PIP_INDEX=https://mirrors.cloud.tencent.com/pypi/simple/ .
+```
+
 ### 离线
 
 ```bash
@@ -68,6 +86,17 @@ zstd -d binary-audit-pipeline.tar.zst -c | docker load
 tar xzf binary-audit-pipeline-tools.tar.gz
 python3 audit.py /path/to/samples /path/to/out
 ```
+
+离线包体积较大，不放在仓库里；可以用
+`docker save binary-audit-pipeline:1.1.0 | zstd -T0 -10 -o binary-audit-pipeline.tar.zst`
+自行生成。
+
+## 环境要求
+
+- Docker Engine 20.10+（或 Docker Desktop）；
+- 约 10GB 可用磁盘（镜像 + 输出目录）；
+- 建议 8GB 内存，Ghidra 和 Joern 比较吃内存；
+- Joern 是最慢的一步，大二进制需要更长时间。
 
 ## 输出
 
@@ -77,6 +106,7 @@ python3 audit.py /path/to/samples /path/to/out
 - CWE 缺陷，CWE676 提示单独列出；
 - 反编译函数清单；
 - Semgrep 结果；
+- 脚本扫描结果（Semgrep、Bandit、njsscan）；
 - 按起点文件分组的 Joern 污点路径；
 - 危险 sink 表。
 
@@ -126,12 +156,18 @@ flowchart LR
 ## 仓库结构
 
 ```text
+audit.py            宿主机一键封装脚本
+Dockerfile          镜像构建文件
 scripts/            流水线与辅助脚本
 ghidra_scripts/     Ghidra headless 导出脚本
 rules/local/        针对伪代码的 Semgrep 规则
+cwe_pcode/          打过补丁的 cwe_checker p-code 提取器（适配 Ghidra 12.x）
 samples/            小型演示样本源码
 prompts/            AI 交接提示词
+examples/           案例（如 Heartbleed）
 docs/               截图与架构图
+LICENSE
+THIRD_PARTY_LICENSES.md
 ```
 
 ## 许可证
