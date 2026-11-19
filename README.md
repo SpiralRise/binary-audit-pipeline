@@ -70,24 +70,6 @@ docker run --rm --entrypoint sh \
   /opt/pipeline/scripts/pipeline.sh /work/targets /work/out
 ```
 
-### Build from source
-
-```bash
-git clone https://github.com/SpiralRise/binary-audit-pipeline.git
-cd binary-audit-pipeline
-docker build -t binary-audit-pipeline:1.1.0 .
-python3 audit.py /path/to/firmware /path/to/out
-```
-
-The build downloads JDK 25, Ghidra, Joern, capa rules and the Semgrep rule packs.
-If GitHub is slow on your network, point the build at a proxy or a mirror:
-
-```bash
-docker build -t binary-audit-pipeline:1.1.0 \
-  --build-arg GITHUB_PROXY=https://gh-proxy.com/ \
-  --build-arg PIP_INDEX=https://mirrors.cloud.tencent.com/pypi/simple/ .
-```
-
 ### Offline
 
 ```bash
@@ -169,7 +151,6 @@ can give to an AI together with the whole `out/` directory. It asks the model to
 
 ```text
 audit.py            host-side wrapper around docker run
-Dockerfile          image build definition
 scripts/            pipeline and helper scripts
 ghidra_scripts/     Ghidra headless export script
 rules/local/        Semgrep rules for decompiled code
