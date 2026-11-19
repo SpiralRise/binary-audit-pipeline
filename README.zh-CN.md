@@ -5,7 +5,9 @@
 > 一条命令，把无源码二进制目录变成一份按优先级排序的高风险点清单：
 > 能力特征、CWE 缺陷、反编译代码、污点路径，以及下一步 fuzz 建议。
 
-<!-- TODO: 添加 docs/demo.gif 后，把这条注释替换成图片链接。 -->
+<p align="center">
+  <img src="docs/demo.gif" alt="对 strip 过的 OpenSSL 1.0.1c 二进制运行流水线" width="800">
+</p>
 
 ## 为什么做这个
 
@@ -35,6 +37,24 @@
 - Joern 的每条 flow 都带源文件、函数、行号和代码片段；
   单节点自环和 sink 名单里的 source 函数会被过滤；
 - 报告里有独立的危险 sink 表，`memcpy`、`strcpy`、`system` 一目了然。
+
+## 这几步是怎么串起来的
+
+这 8 步是一条漏斗，每一步都在为下一步缩小范围：
+
+1. **CVE 检查**（可选）按版本比对已知 CVE；
+2. **capa + cwe_checker** 扫目标目录里的全部文件：capa 给出能力标签
+   （网络通信、文件处理、编码解码、加解密），cwe_checker 给出内存安全和其它 CWE 缺陷；
+3. 两个工具命中的文件**去重**后，作为 **Ghidra 的逆向范围**；没被命中的直接跳过，
+   几千个函数因此收敛到几百个。如果全都没命中，Ghidra 回退到全量反编译；
+4. **Semgrep** 在伪代码上做初筛，只有命中危险模式的文件进入 **Joern 范围**；
+5. **Joern** 复筛，确认不可信输入是否真的流到 sink，并给出文件、函数、行号；
+6. 同时用 **Semgrep + Bandit + njsscan** 分析目录里的 shell / Python / JS 脚本；
+7. **汇总**成 `高风险点清单.md`。
+
+每一步的原始结果都写在自己的编号目录里（`01_cve`、`02_capa`……）。所以跑完的步骤
+会自动跳过、中断后能续跑、可以用 `--only` 只重跑某一步；整个 `out/` 目录也可以直接
+交给 AI 或同事做下一步分析。
 
 ## 快速开始
 
@@ -77,8 +97,16 @@ python3 audit.py /path/to/samples /path/to/out
 
 - Docker Engine 20.10+（或 Docker Desktop）；
 - 约 10GB 可用磁盘（镜像 + 输出目录）；
-- 建议 8GB 内存，Ghidra 和 Joern 比较吃内存；
-- Joern 是最慢的一步，大二进制需要更长时间。
+- 4 核 CPU 对中等规模的二进制足够；
+- 8GB 内存起步，建议 16GB，Ghidra 和 Joern 比较吃内存。
+
+## 实测性能
+
+4 核 / 16GB 内存的虚拟机上，对一个 strip 过的 `libssl.so.1.0.0`
+（Ubuntu 12.04 自带的 OpenSSL 1.0.1c，约 8700 个函数）跑完整 8 步（含 Joern）
+约 **25 分钟**。耗时主要在 Ghidra 反编译和 Joern 污点分析，其余步骤合计几分钟。
+
+因为每一步的结果都落盘缓存，中断后可以直接续跑，也可以用 `--only 8` 只重跑汇总。
 
 ## 输出
 
@@ -93,6 +121,8 @@ python3 audit.py /path/to/samples /path/to/out
 - 危险 sink 表。
 
 原始工具输出保留在 `out/01_cve`、`out/02_capa` 等目录，方便查看 JSON。
+
+![危险 sink 表](docs/sink-table.png)
 
 ## 架构
 
@@ -129,6 +159,13 @@ flowchart LR
 同样的内容也打包成了 agent skill：
 [`skills/binary-audit-triage/SKILL.md`](skills/binary-audit-triage/SKILL.md)，
 支持 skill 的运行时会自动加载。
+
+## 案例
+
+[`examples/heartbleed/`](examples/heartbleed/) 用一段 strip 过的 OpenSSL 1.0.1c
+二进制（Heartbleed 同版本）跑完整流程：88 个文件进去，得到 10 个反编译文件、
+8735 个函数、33 条污点路径、81 条危险 sink。页面上有终端运行截图，也写清了
+这个结果能说明什么、不能说明什么。
 
 ## 限制
 
