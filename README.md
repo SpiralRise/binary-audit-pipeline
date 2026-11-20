@@ -163,6 +163,29 @@ flowchart LR
   I --> J[高风险点清单.md]
 ```
 
+### Design notes: a funnel, not a fan-out
+
+Running all five tools over everything and merging the output sounds simpler,
+but the noise is unmanageable in practice: cwe_checker reports CWE676 on almost
+every ELF, full decompilation of a single `libssl.so` means 8,000+ functions,
+and building a Joern CPG for every function runs out of memory.
+
+Three decisions keep runtime and the report readable:
+
+1. **Ghidra only decompiles what capa or cwe_checker flagged.** If neither
+   flags anything, it falls back to all files.
+2. **Joern only builds a graph for the pseudocode Semgrep selected.** Semgrep
+   answers "is there a dangerous call here"; Joern answers "can external input
+   reach it".
+3. **Every step writes to its own numbered directory**, so a run can resume, a
+   single step can be re-run, and the raw JSON stays available for a human or
+   an AI to re-read later.
+
+Things that bit us along the way: every tool speaks a different JSON dialect
+(so there is one intermediate record shape), CWE676 drowns out real defects (so
+it is counted separately), and pseudocode line numbers are not source line
+numbers (the report says so explicitly).
+
 ## From audit to fuzz
 
 Static triage is only useful if it leads to the next step. This repository ships
@@ -214,7 +237,21 @@ examples/           case studies (e.g. Heartbleed)
 docs/               screenshots and diagrams
 LICENSE
 THIRD_PARTY_LICENSES.md
+CONTRIBUTING.md
 ```
+
+## Contributing
+
+Issues and pull requests are welcome. The pipeline is a set of shell and Python
+scripts under `scripts/`, and each step is independent, so a fix usually touches
+only one file.
+
+- Open an issue first for anything larger than a bug fix.
+- Put new behaviour behind an environment variable, the way the existing
+  `WITH_*` and `GHIDRA_SCOPE` switches work, so the default path stays the same.
+- Test on a small directory (a handful of ELF files) before opening a PR.
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for details.
 
 ## License
 
@@ -225,3 +262,7 @@ MIT. Third-party tools and rules keep their own licenses; see
 
 This project is intended for authorized security testing and research. Do not
 use it against systems you do not own or have permission to test.
+
+---
+
+Author: SpiralRise
